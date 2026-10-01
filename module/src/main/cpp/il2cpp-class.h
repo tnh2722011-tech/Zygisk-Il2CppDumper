@@ -127,6 +127,15 @@ typedef struct MethodInfo {
     Il2CppMethodPointer methodPointer;
 } MethodInfo;
 
+struct EventInfo {
+    const char* name;
+    const Il2CppType* eventType;
+    Il2CppClass* parent;
+    const MethodInfo* add;
+    const MethodInfo* remove;
+    const MethodInfo* raise;
+};
+
 typedef struct Il2CppObject {
     union {
         Il2CppClass *klass;

@@ -22,9 +22,64 @@ public:
         this->env = env;
     }
 
+    bool isTargetPackage(const char *package_name) {
+        if (!package_name || strlen(package_name) == 0) return false;
+
+        // 1. Dynamic target config files
+        const char *config_paths[] = {
+            "/data/local/tmp/dump_target.txt",
+            "/sdcard/dump_target.txt",
+            "/sdcard/Download/dump_target.txt"
+        };
+        for (auto cfg : config_paths) {
+            FILE *fp = fopen(cfg, "r");
+            if (fp) {
+                char target[256] = {0};
+                if (fgets(target, sizeof(target) - 1, fp)) {
+                    size_t len = strlen(target);
+                    while (len > 0 && (target[len - 1] == '\r' || target[len - 1] == '\n' || target[len - 1] == ' ')) {
+                        target[--len] = '\0';
+                    }
+                    if (len > 0) {
+                        fclose(fp);
+                        if (strcmp(target, "*") == 0 || strcmp(target, package_name) == 0) {
+                            LOGI("Matched target from %s: %s", cfg, package_name);
+                            return true;
+                        }
+                    }
+                }
+                fclose(fp);
+            }
+        }
+
+        // 2. Check GamePackageName from game.h
+        if (strcmp(GamePackageName, "*") == 0) {
+            if (strncmp(package_name, "android", 7) == 0 ||
+                strncmp(package_name, "com.android", 11) == 0 ||
+                strncmp(package_name, "com.google.android", 18) == 0) {
+                return false;
+            }
+            return true;
+        }
+
+        if (strcmp(package_name, GamePackageName) == 0) {
+            return true;
+        }
+
+        if (strstr(GamePackageName, "playtogether") != nullptr && strstr(package_name, "playtogether") != nullptr) {
+            return true;
+        }
+
+        return false;
+    }
+
     void preAppSpecialize(AppSpecializeArgs *args) override {
         auto package_name = env->GetStringUTFChars(args->nice_name, nullptr);
         auto app_data_dir = env->GetStringUTFChars(args->app_data_dir, nullptr);
+        if (isTargetPackage(package_name)) {
+            // MOUNT_EXTERNAL_FULL (2) enables full direct write access to /sdcard/Download
+            args->mount_external = 2;
+        }
         preSpecialize(package_name, app_data_dir);
         env->ReleaseStringUTFChars(args->nice_name, package_name);
         env->ReleaseStringUTFChars(args->app_data_dir, app_data_dir);
@@ -46,7 +101,7 @@ private:
     size_t length;
 
     void preSpecialize(const char *package_name, const char *app_data_dir) {
-        if (strcmp(package_name, GamePackageName) == 0) {
+        if (isTargetPackage(package_name)) {
             LOGI("detect game: %s", package_name);
             enable_hack = true;
             game_data_dir = new char[strlen(app_data_dir) + 1];

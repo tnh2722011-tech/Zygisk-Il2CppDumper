@@ -1,27 +1,52 @@
 name: Build
+
 on:
   workflow_dispatch:
-      inputs:
-        package_name:
-          description: "Package name of the game:"
-          required: true
+    inputs:
+      package_name:
+        description: "Package name of the game (leave blank for com.vng.playtogether):"
+        required: false
+        default: "com.vng.playtogether"
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
+
     - uses: actions/setup-java@v3
       with:
         distribution: temurin
-        java-version: 11
+        java-version: 17
         cache: gradle
-    - run: |
+
+    - name: Set package name
+      run: |
+        PKG="${{ github.event.inputs.package_name }}"
+        if [ -z "$PKG" ]; then
+          PKG="com.vng.playtogether"
+        fi
+        echo "TARGET_PKG=$PKG" >> $GITHUB_ENV
+        echo "Building for package: $PKG"
+
+    - name: Configure and build
+      run: |
         chmod +x ./gradlew
-        sed -i 's/moduleDescription = "/moduleDescription = "(${{ github.event.inputs.package_name }}) /g' module.gradle
-        sed -i "s/com.game.packagename/${{ github.event.inputs.package_name }}/g" module/src/main/cpp/game.h
+        # Update package name in source
+        sed -i "s/com.vng.playtogether/${{ env.TARGET_PKG }}/g" module/src/main/cpp/game.h
+        sed -i "s/com.game.packagename/${{ env.TARGET_PKG }}/g" module/src/main/cpp/game.h
+        # Update module description
+        sed -i "s/Enhanced 100% full dump - saves to \/sdcard\/Download\//Enhanced 100% full dump (${{ env.TARGET_PKG }}) - saves to \/sdcard\/Download\//g" module.gradle
         ./gradlew :module:assembleRelease
-    - uses: actions/upload-artifact@v4
+
+    - name: Upload module zip
+      uses: actions/upload-artifact@v4
       with:
-        name: zygisk-il2cppdumper
+        name: zygisk-il2cppdumper-${{ env.TARGET_PKG }}
         path: out/magisk_module_release/
+        if-no-files-found: error
+
+    - name: List output files
+      run: |
+        echo "=== Output files ==="
+        ls -la out/magisk_module_release/ || true
